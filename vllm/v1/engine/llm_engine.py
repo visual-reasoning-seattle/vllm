@@ -304,6 +304,11 @@ class LLMEngine:
         # 4) Record stats
         with record_function_or_nullcontext("llm_engine step: record_stats"):
             if self.logger_manager is not None and outputs.scheduler_stats is not None:
+                # Collect vision encoding times
+                if iteration_stats is not None:
+                    from vllm.v1.metrics.statsd import get_and_clear_metrics
+                    iteration_stats.vision_encoding_times_iter = get_and_clear_metrics("vision_encoding_seconds")
+                
                 self.logger_manager.record(
                     scheduler_stats=outputs.scheduler_stats,
                     iteration_stats=iteration_stats,
