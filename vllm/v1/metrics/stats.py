@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
+import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
@@ -11,6 +12,25 @@ from vllm.v1.spec_decode.metrics import SpecDecodingStats
 
 if TYPE_CHECKING:
     from vllm.v1.engine import EngineCoreEvent, EngineCoreOutput, FinishReason
+
+# Thread-local buffer for vision encoding times
+_vision_encoding_buffer = threading.local()
+
+
+def record_vision_encoding_time(duration: float):
+    """Record a vision encoding duration (in seconds)."""
+    if not hasattr(_vision_encoding_buffer, "times"):
+        _vision_encoding_buffer.times = []
+    _vision_encoding_buffer.times.append(duration)
+
+
+def get_and_clear_vision_encoding_times() -> list[float]:
+    """Get and clear buffered vision encoding times."""
+    if not hasattr(_vision_encoding_buffer, "times"):
+        return []
+    times = _vision_encoding_buffer.times
+    _vision_encoding_buffer.times = []
+    return times
 
 
 @dataclass
@@ -226,6 +246,7 @@ class IterationStats:
         self.time_to_first_tokens_iter: list[float] = []
         self.inter_token_latencies_iter: list[float] = []
         self.num_corrupted_reqs: int = 0
+        self.vision_encoding_times_iter: list[float] = []
 
     def __repr__(self) -> str:
         field_to_value_str = ", ".join(f"{k}={v}" for k, v in vars(self).items())

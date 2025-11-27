@@ -5,14 +5,17 @@
 
 import os
 import socket
-import threading
 from typing import Optional
 
 from vllm.config import VllmConfig
-from vllm.v1.metrics.stats import SchedulerStats, IterationStats, MultiModalCacheStats
+from vllm.v1.metrics.stats import (
+    IterationStats,
+    MultiModalCacheStats,
+    SchedulerStats,
+    record_vision_encoding_time,
+)
 
 _statsd_client: Optional["StatsDClient"] = None
-_metric_buffer = threading.local()
 
 
 class StatsDClient:
@@ -63,13 +66,25 @@ class StatsDStatLogger:
         if scheduler_stats:
             self.client.gauge("num_requests_running", scheduler_stats.num_running_reqs)
             self.client.gauge("num_requests_waiting", scheduler_stats.num_waiting_reqs)
-            self.client.gauge("kv_cache_usage_perc", scheduler_stats.kv_cache_usage * 100)
-            self.client.counter("prefix_cache_queries", scheduler_stats.prefix_cache_stats.queries)
-            self.client.counter("prefix_cache_hits", scheduler_stats.prefix_cache_stats.hits)
+            self.client.gauge(
+                "kv_cache_usage_perc", scheduler_stats.kv_cache_usage * 100
+            )
+            self.client.counter(
+                "prefix_cache_queries", scheduler_stats.prefix_cache_stats.queries
+            )
+            self.client.counter(
+                "prefix_cache_hits", scheduler_stats.prefix_cache_stats.hits
+            )
 
             if scheduler_stats.connector_prefix_cache_stats:
-                self.client.counter("external_prefix_cache_queries", scheduler_stats.connector_prefix_cache_stats.queries)
-                self.client.counter("external_prefix_cache_hits", scheduler_stats.connector_prefix_cache_stats.hits)
+                self.client.counter(
+                    "external_prefix_cache_queries",
+                    scheduler_stats.connector_prefix_cache_stats.queries,
+                )
+                self.client.counter(
+                    "external_prefix_cache_hits",
+                    scheduler_stats.connector_prefix_cache_stats.hits,
+                )
 
         if mm_cache_stats:
             self.client.counter("mm_cache_queries", mm_cache_stats.queries)
@@ -95,7 +110,9 @@ class StatsDStatLogger:
             self.client.counter(f"request_success.{req.finish_reason}")
             self.client.timing("e2e_request_latency_seconds", req.e2e_latency * 1000)
             self.client.timing("request_queue_time_seconds", req.queued_time * 1000)
-            self.client.timing("request_inference_time_seconds", req.inference_time * 1000)
+            self.client.timing(
+                "request_inference_time_seconds", req.inference_time * 1000
+            )
             self.client.timing("request_prefill_time_seconds", req.prefill_time * 1000)
             self.client.timing("request_decode_time_seconds", req.decode_time * 1000)
 
@@ -106,7 +123,7 @@ class StatsDStatLogger:
         pass
 
 
-def get_statsd_client() -> Optional[StatsDClient]:
+def get_statsd_client() -> StatsDClient | None:
     """Get global StatsD client if configured."""
     global _statsd_client
     if _statsd_client is None:
@@ -121,15 +138,15 @@ def get_statsd_client() -> Optional[StatsDClient]:
 
 
 def record_metric(metric: str, value: float, metric_type: str = "timing"):
-    """Record a metric value for collection into IterationStats."""
-    if not hasattr(_metric_buffer, metric_type):
-        setattr(_metric_buffer, metric_type, {})
-    buffer = getattr(_metric_buffer, metric_type)
-    if metric not in buffer:
-        buffer[metric] = []
-    buffer[metric].append(value)
-    
-    # Also send to StatsD immediately
+    """Record a metric value and send to StatsD if configured.
+
+    For vision encoding metrics, also records to thread-local buffer.
+    """
+    # Record vision encoding times to buffer for collection
+    if metric == "vision_encoding_seconds" and metric_type == "timing":
+        record_vision_encoding_time(value)
+
+    # Also send to StatsD immediately if configured
     client = get_statsd_client()
     if client:
         if metric_type == "timing":
@@ -138,14 +155,3 @@ def record_metric(metric: str, value: float, metric_type: str = "timing"):
             client.counter(metric, value)
         elif metric_type == "gauge":
             client.gauge(metric, value)
-
-
-def get_and_clear_metrics(metric: str, metric_type: str = "timing") -> list[float]:
-    """Get and clear buffered metrics."""
-    if not hasattr(_metric_buffer, metric_type):
-        return []
-    buffer = getattr(_metric_buffer, metric_type)
-    values = buffer.get(metric, [])
-    buffer[metric] = []
-    return values
-

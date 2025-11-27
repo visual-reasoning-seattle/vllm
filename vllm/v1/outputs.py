@@ -145,6 +145,17 @@ class ECConnectorOutput:
     finished_recving: set[str] | None = None
 
 
+@dataclass
+class ModelMetrics:
+    """Timing metrics collected during model execution."""
+
+    # Vision encoding times for requests with images (in seconds)
+    vision_encoding_times: list[float] = field(default_factory=list)
+
+    # Future: Add other model-level timing metrics here
+    # e.g., attention_times, moe_routing_times, etc.
+
+
 # ModelRunnerOutput is serialized and sent to the scheduler process.
 # This is expensive for torch.Tensor so prefer to use list instead.
 @dataclass
@@ -180,6 +191,9 @@ class ModelRunnerOutput:
 
     # req_id -> num_nans_in_logits
     num_nans_in_logits: dict[str, int] | None = None
+
+    # Model execution timing metrics
+    model_metrics: ModelMetrics | None = None
 
 
 # ModelRunnerOutput wrapper for async scheduling.

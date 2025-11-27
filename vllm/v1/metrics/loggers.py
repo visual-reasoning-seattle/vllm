@@ -2,6 +2,7 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 import logging
+import os
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
@@ -853,6 +854,30 @@ class PrometheusStatLogger(AggregateStatLoggerBase):
             histogram_decode_time_request, engine_indexes, model_name
         )
 
+        histogram_vision_encoding_time = self._histogram_cls(
+            name="vllm:vision_encoding_seconds",
+            documentation="Histogram of vision encoding time in seconds.",
+            buckets=[
+                0.01,
+                0.05,
+                0.1,
+                0.15,
+                0.2,
+                0.25,
+                0.3,
+                0.4,
+                0.5,
+                0.75,
+                1.0,
+                2.0,
+                5.0,
+            ],
+            labelnames=labelnames,
+        )
+        self.histogram_vision_encoding_time = make_per_engine(
+            histogram_vision_encoding_time, engine_indexes, model_name
+        )
+
         #
         # LoRA metrics
         #
@@ -991,6 +1016,9 @@ class PrometheusStatLogger(AggregateStatLoggerBase):
             self.histogram_inter_token_latency[engine_idx].observe(itl)
             if self.show_hidden_metrics:
                 self.histogram_time_per_output_token[engine_idx].observe(itl)
+
+        for vision_time in iteration_stats.vision_encoding_times_iter:
+            self.histogram_vision_encoding_time[engine_idx].observe(vision_time)
 
         for finished_request in iteration_stats.finished_requests:
             self.counter_request_success[finished_request.finish_reason][
@@ -1147,6 +1175,12 @@ class StatLoggerManager:
             self.stat_loggers.append(
                 PrometheusStatLogger(vllm_config, self.engine_indexes)
             )
+
+        # Add StatsD logger if enabled
+        if os.getenv("VLLM_STATSD_HOST"):
+            from vllm.v1.metrics.statsd import StatsDStatLogger
+
+            self.stat_loggers.append(StatsDStatLogger(vllm_config, self.engine_indexes))
 
     def record(
         self,

@@ -964,6 +964,17 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
         )
         prompt_logprobs_dict = self.compute_prompt_logprobs(hidden_states, input_batch)
 
+        # Collect model execution metrics
+        from vllm.v1.metrics.stats import get_and_clear_vision_encoding_times
+        from vllm.v1.outputs import ModelMetrics
+
+        vision_encoding_times = get_and_clear_vision_encoding_times()
+        model_metrics = (
+            ModelMetrics(vision_encoding_times=vision_encoding_times)
+            if vision_encoding_times
+            else None
+        )
+
         # Prepare the model runner output.
         model_runner_output = ModelRunnerOutput(
             req_ids=input_batch.req_ids,
@@ -976,6 +987,7 @@ class GPUModelRunner(LoRAModelRunnerMixin, KVConnectorModelRunnerMixin):
             pooler_output=[],
             kv_connector_output=None,
             num_nans_in_logits=None,
+            model_metrics=model_metrics,
         )
         async_output = AsyncOutput(
             model_runner_output=model_runner_output,

@@ -171,6 +171,9 @@ class EngineCoreOutputs(
     utility_output: UtilityOutput | None = None
     finished_requests: set[str] | None = None
 
+    # Model execution timing metrics
+    model_metrics: "ModelMetrics | None" = None
+
     # In DP case, used to signal that the current wave of requests
     # has finished and the engines are paused.
     wave_complete: int | None = None

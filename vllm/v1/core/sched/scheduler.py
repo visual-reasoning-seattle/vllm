@@ -1183,6 +1183,12 @@ class Scheduler(SchedulerInterface):
                 engine_core_outputs[0] = eco = EngineCoreOutputs()
             eco.scheduler_stats = stats
 
+        # Attach model metrics to the first engine core output
+        if model_runner_output.model_metrics is not None:
+            if (eco := next(iter(engine_core_outputs.values()), None)) is None:
+                engine_core_outputs[0] = eco = EngineCoreOutputs()
+            eco.model_metrics = model_runner_output.model_metrics
+
         return engine_core_outputs
 
     def _update_request_with_output(
