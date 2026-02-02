@@ -2,6 +2,7 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 import logging
+import os
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
@@ -1250,6 +1251,20 @@ class StatLoggerManager:
             self.stat_loggers.append(
                 PrometheusStatLogger(vllm_config, self.engine_indexes)
             )
+
+        # Add StatsD logger if configured (lazy import)
+        statsd_host = os.getenv("VLLM_STATSD_HOST")
+        if statsd_host:
+            from vllm.v1.metrics.statsd import StatsDStatLogger
+
+            statsd_port = os.getenv("VLLM_STATSD_PORT", "8125")
+            statsd_logger = StatsDStatLogger(
+                vllm_config, self.engine_indexes, statsd_host, statsd_port
+            )
+            if statsd_logger.client:
+                self.stat_loggers.append(statsd_logger)
+        else:
+            logger.debug("VLLM_STATSD_HOST not set, StatsD metrics disabled.")
 
     def record(
         self,
